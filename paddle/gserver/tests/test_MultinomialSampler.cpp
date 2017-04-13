@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Baidu, Inc. All Rights Reserve.
+/* Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserve.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License. */
 
-
 #include <random>
 
 #include <gtest/gtest.h>
@@ -21,8 +20,8 @@ limitations under the License. */
 #undef PADDLE_DISABLE_TIMER
 #include "paddle/utils/Stat.h"
 
-#include "paddle/utils/Util.h"
 #include "paddle/gserver/layers/MultinomialSampler.h"
+#include "paddle/utils/Util.h"
 
 using namespace paddle;  // NOLINT
 using namespace std;     // NOLINT
@@ -41,39 +40,42 @@ public:
 TEST(MultinomialSampler, gen) {
   int numGrids = 1024 * 1024;
   int size = 1024 * 4;
-
   default_random_engine reng;
-  uniform_int_distribution<int> rand(1, numGrids / size * 1.8);
-  vector<real> prob;
-  int sum = 0;
-  for (int i = 0; i < size; ++i) {
-    prob.push_back(rand(reng));
-    sum += prob.back();
-  }
-  CHECK_LE(sum, numGrids);
-  prob.back() += numGrids - sum;
 
-  vector<int> counts(size);
-  MultinomialSamplerTester sampler(&prob[0], size);
-  counts.assign(size, 0);
-  {
-    double s = (double)size / (double)numGrids;
-    REGISTER_TIMER("MultinomialSampler");
-    for (double i = 0; i < numGrids; ++i) {
-      int ret = sampler.testGen([i, s]() { return s * i; });
-      if (ret < 0 || ret >= size) {
-        EXPECT_GE(ret, 0);
-        EXPECT_LT(ret, size);
+  for (size_t iter = 0; iter < 256; ++iter) {
+    uniform_int_distribution<int> rand(1, numGrids / size * 1.8);
+    vector<real> prob;
+    int sum = 0;
+    for (int i = 0; i < size; ++i) {
+      prob.push_back(rand(reng));
+      sum += prob.back();
+    }
+
+    CHECK_LE(sum, numGrids);
+    prob.back() += numGrids - sum;
+
+    vector<int> counts(size);
+    MultinomialSamplerTester sampler(&prob[0], size);
+    counts.assign(size, 0);
+    {
+      double s = (double)size / (double)numGrids;
+      REGISTER_TIMER("MultinomialSampler");
+      for (double i = 0; i < numGrids; ++i) {
+        int ret = sampler.testGen([i, s]() { return s * i; });
+        if (ret < 0 || ret >= size) {
+          EXPECT_GE(ret, 0);
+          EXPECT_LT(ret, size);
+          break;
+        }
+        ++counts[ret];
+      }
+    }
+    for (int i = 0; i < size; ++i) {
+      if (prob[i] != counts[i]) {
+        EXPECT_EQ(prob[i], counts[i]);
+        LOG(INFO) << iter;
         break;
       }
-      ++counts[ret];
-    }
-  }
-  for (int i = 0; i < size; ++i) {
-    if (prob[i] != counts[i]) {
-      EXPECT_EQ(prob[i], counts[i]);
-      LOG(INFO) << "i=" << i;
-      break;
     }
   }
 }

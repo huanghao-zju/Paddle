@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Baidu, Inc. All Rights Reserve.
+/* Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserve.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -11,7 +11,6 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License. */
-
 
 #ifndef HL_TOP_K_H_
 #define HL_TOP_K_H_
@@ -31,9 +30,11 @@ limitations under the License. */
  * @param[in]   numSamples     height of input value.
  *
  */
-extern void hl_matrix_top_k(real* topVal, int ldv,
-                            int * topIds,
-                            real* src, int lds,
+extern void hl_matrix_top_k(real* topVal,
+                            int ldv,
+                            int* topIds,
+                            real* src,
+                            int lds,
                             int dim,
                             int beamSize,
                             int numSamples);
@@ -50,8 +51,9 @@ extern void hl_matrix_top_k(real* topVal, int ldv,
  *
  * @note    Only support HL_SPARSE_CSR format.
  */
-extern void hl_sparse_matrix_top_k(real* topVal, int ldv,
-                                   int * topIds,
+extern void hl_sparse_matrix_top_k(real* topVal,
+                                   int ldv,
+                                   int* topIds,
                                    hl_sparse_matrix_s src,
                                    int beamSize,
                                    int numSamples);

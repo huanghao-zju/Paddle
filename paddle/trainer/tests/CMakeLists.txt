@@ -1,11 +1,3 @@
-################# test_Prediction ######################
-add_unittest_without_exec(test_Prediction
-    test_Prediction.cpp)
-add_test(NAME test_Prediction
-  COMMAND ${PROJ_ROOT}/paddle/.set_python_path.sh -d ${PROJ_ROOT}/python
-        ${CMAKE_CURRENT_BINARY_DIR}/test_Prediction --merger=${CMAKE_CURRENT_BINARY_DIR}/../paddle_merge_model
-    WORKING_DIRECTORY ${PROJ_ROOT}/paddle/)
-
 ################# test_Compare ############################
 add_unittest_without_exec(test_Compare
     test_Compare.cpp)
@@ -17,9 +9,10 @@ add_test(NAME test_Compare
 ################# test_Trainer ###########################
 add_unittest_without_exec(test_Trainer
     test_Trainer.cpp)
-set(diy_dll_dir ${CMAKE_CURRENT_BINARY_DIR}/../../gserver/tests)
 add_test(NAME test_Trainer
   COMMAND ${PROJ_ROOT}/paddle/.set_python_path.sh -d ${PROJ_ROOT}/python/
+        ${PYTHON_EXECUTABLE} ${PROJ_ROOT}/paddle/trainer/tests/gen_proto_data.py &&
+        ${PROJ_ROOT}/paddle/.set_python_path.sh -d ${PROJ_ROOT}/python/
         ${CMAKE_CURRENT_BINARY_DIR}/test_Trainer
     WORKING_DIRECTORY ${PROJ_ROOT}/paddle/)
 
@@ -27,7 +20,8 @@ add_test(NAME test_Trainer
 add_unittest_without_exec(test_TrainerOnePass
     test_TrainerOnePass.cpp)
 add_test(NAME test_TrainerOnePass
-  COMMAND  ${PROJ_ROOT}/paddle/.set_python_path.sh -d ${PROJ_ROOT}/python/
+  COMMAND  ${PROJ_ROOT}/paddle/.set_python_path.sh -d
+        ${PROJ_ROOT}/python/:${PROJ_ROOT}/paddle/trainer/tests
         ${PROJ_ROOT}/paddle/.set_port.sh -p port ${CMAKE_CURRENT_BINARY_DIR}/test_TrainerOnePass
     WORKING_DIRECTORY ${PROJ_ROOT}/paddle/)
 
@@ -47,18 +41,19 @@ add_test(NAME test_CompareTwoOpts
   COMMAND ${PROJ_ROOT}/paddle/.set_python_path.sh -d ${PROJ_ROOT}/python/
         ${CMAKE_CURRENT_BINARY_DIR}/test_CompareTwoOpts
             --config_file_a=trainer/tests/sample_trainer_config_opt_a.conf --config_file_b=trainer/tests/sample_trainer_config_opt_b.conf
-            --num_passes=1 --need_high_accuracy=1
+            --num_passes=1 --need_high_accuracy=0
     WORKING_DIRECTORY ${PROJ_ROOT}/paddle/)
 
 ################# test_CompareSparse ##################
 add_unittest_without_exec(test_CompareSparse
     test_CompareSparse.cpp)
-add_test(NAME test_CompareSparse
-  COMMAND ${PROJ_ROOT}/paddle/.set_python_path.sh -d ${PROJ_ROOT}/python/
-            ./.set_port.sh -p port -n 6
-                ${CMAKE_CURRENT_BINARY_DIR}/test_CompareSparse
+if(NOT ON_TRAVIS)
+  add_test(NAME test_CompareSparse
+    COMMAND ${PROJ_ROOT}/paddle/.set_python_path.sh -d ${PROJ_ROOT}/python/
+              ./.set_port.sh -p port -n 6
+                  ${CMAKE_CURRENT_BINARY_DIR}/test_CompareSparse
     WORKING_DIRECTORY ${PROJ_ROOT}/paddle/)
-
+endif()
 ################# test_recurrent_machine_generation ###############
 add_unittest_without_exec(test_recurrent_machine_generation
     test_recurrent_machine_generation.cpp)
@@ -80,5 +75,5 @@ add_test(NAME test_PyDataProviderWrapper
 #################### test_config_parser #########################
 add_test(NAME test_config_parser
   COMMAND ${PROJ_ROOT}/paddle/.set_python_path.sh -d ${PROJ_ROOT}/python/
-        python ${PROJ_ROOT}/paddle/trainer/tests/config_parser_test.py
+        ${PYTHON_EXECUTABLE} ${PROJ_ROOT}/paddle/trainer/tests/config_parser_test.py
     WORKING_DIRECTORY ${PROJ_ROOT}/paddle/)

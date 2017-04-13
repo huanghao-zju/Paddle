@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Baidu, Inc. All Rights Reserve.
+/* Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserve.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,16 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License. */
 
-
 #pragma once
 
 #include "hl_gpu.h"
 
 #include "paddle/math/Matrix.h"
 #include "paddle/math/Vector.h"
+#include "paddle/parameter/Parameter.h"
 #include "paddle/utils/Locks.h"
 #include "paddle/utils/Util.h"
-#include "paddle/parameter/Parameter.h"
 
 namespace paddle {
 
@@ -153,9 +152,8 @@ struct Argument {
   }
 
   int64_t getNumSubSequences() const {
-    return subSequenceStartPositions
-               ? subSequenceStartPositions->getSize() - 1
-               : getBatchSize();
+    return subSequenceStartPositions ? subSequenceStartPositions->getSize() - 1
+                                     : getBatchSize();
   }
 
   bool hasSubseq() const { return subSequenceStartPositions != nullptr; }
@@ -177,11 +175,11 @@ struct Argument {
   }
 
   /**
-   * @brief (value, grad, sequenceStartPositions) of output are subset of
+   * @brief (value, ids, grad, sequenceStartPositions) of output are subset of
    *        input. Note that, output share the same memory of input.
    *
    * @param input[in]       input
-   * @param offset[in]      offset of input.value
+   * @param offset[in]      offset in terms of rows
    * @param height[in]      height of output.value
    * @param width[in]       width of output.value
    * @param useGpu[in]
@@ -190,9 +188,14 @@ struct Argument {
    * @param seqStart[in]    offset of input.sequenceStartPositions
    * @param seqSize[in]     lenght of output.sequenceStartPositions
    */
-  void subArgFrom(const Argument& input, size_t offset, size_t height,
-                  size_t width, bool useGpu, bool trans = false,
-                  bool seqFlag = false, size_t seqStart = 0,
+  void subArgFrom(const Argument& input,
+                  size_t offset,
+                  size_t height,
+                  size_t width,
+                  bool useGpu,
+                  bool trans = false,
+                  bool seqFlag = false,
+                  size_t seqStart = 0,
                   size_t seqSize = 0);
   /*
    * for sequence input:
@@ -203,13 +206,33 @@ struct Argument {
    *   startSeq: the sample id of start
    *   copySize: how many samples need to copy
    *   return value: how many samples are copied
+   * Note that when specifying the stream explicitly in this case,
+   * synchronize should also be called somewhere after this function
    */
-  int32_t resizeAndCopyFrom(const Argument& src, int32_t startSeq,
-                            int32_t copySize, bool useGpu = FLAGS_use_gpu,
-                            hl_stream_t stream = HPPL_STREAM_DEFAULT);
+  int32_t resizeAndCopyFrom(const Argument& src,
+                            int32_t startSeq,
+                            int32_t copySize,
+                            bool useGpu,
+                            hl_stream_t stream);
 
-  void resizeAndCopyFrom(const Argument& src, bool useGpu = FLAGS_use_gpu,
-                         hl_stream_t stream = HPPL_STREAM_DEFAULT);
+  /*
+   * same with the above function, except that the stream is
+   * HPPL_STREAM_DEFAULT and synchronize is automatically called
+   * inside it
+   */
+  int32_t resizeAndCopyFrom(const Argument& src,
+                            int32_t startSeq,
+                            int32_t copySize,
+                            bool useGpu = FLAGS_use_gpu);
+
+  void resizeAndCopyFrom(const Argument& src, bool useGpu, hl_stream_t stream);
+
+  /*
+   * same with the above function, except that the stream is
+   * HPPL_STREAM_DEFAULT and synchronize is automatically called
+   * inside it
+   */
+  void resizeAndCopyFrom(const Argument& src, bool useGpu = FLAGS_use_gpu);
 
   /*
     @brief Concatenate several arguments into one and put the result into it.
@@ -222,13 +245,16 @@ struct Argument {
    */
   void concat(const std::vector<Argument>& args,
               const std::vector<int>& selectRows,
-              const std::vector<int>& seqStartPos, bool useGpu,
-              hl_stream_t stream, PassType passType);
+              const std::vector<int>& seqStartPos,
+              bool useGpu,
+              hl_stream_t stream,
+              PassType passType);
 
   /*
     Concatenate several args into one and put the result into this.
    */
-  void concat(const std::vector<Argument>& src, bool useGpu = FLAGS_use_gpu,
+  void concat(const std::vector<Argument>& src,
+              bool useGpu = FLAGS_use_gpu,
               hl_stream_t stream = HPPL_STREAM_DEFAULT,
               PassType passType = PASS_TEST);
 
@@ -238,12 +264,29 @@ struct Argument {
   static void splitByDataId(const std::vector<Argument>& argus,
                             std::vector<std::vector<Argument>>* arguGroups);
 
+  struct SeqInfo {
+    // Equal to sequence length for sequence data
+    // Equal to number of subsequences for subsequence data
+    int topLevelLength;
+
+    int seqStart;
+    int seqId;
+
+    // Equal to topLevelLength for sequence data
+    // Equal to sum of the length of subsequences for subsequence data
+    int subLevelLength;
+
+    // Only used for subsequence data, start position of this sequence
+    // is subSequenceStartPositions, i.e.
+    // subSequenceStartPositions[subSeqStart] == seqStart
+    int subSeqStart;
+  };
   /*
-   Get Sequence Length, startPositions and max Length according to input
-   */
-  void getSeqLengthAndStart(
-      std::vector<std::tuple<int, int, int, int>>* seqLengthAndStart,
-      int* maxSequenceLength) const;
+    Get SeqInfo for each sequence of this argument
+    Elements in *seqInfo are sorted by topLevelLength in descending order
+  */
+  void getSeqInfo(std::vector<SeqInfo>* segInfo) const;
+
   /*
    Check Whether sequenceStartPositions is subset of
    subSequenceStartPositions.

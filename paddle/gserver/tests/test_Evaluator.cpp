@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Baidu, Inc. All Rights Reserve.
+/* Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserve.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,19 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License. */
 
-
 #include <gtest/gtest.h>
 #include <vector>
 #include "ModelConfig.pb.h"
+#include "paddle/testing/TestUtil.h"
 #include "paddle/trainer/Trainer.h"
-#include "TestUtil.h"
 
 using namespace paddle;  // NOLINT
 using namespace std;     // NOLINT
 
-P_DECLARE_bool(use_gpu);
-P_DECLARE_int32(gpu_id);
-P_DECLARE_bool(thread_local_rand_use_global_seed);
+DECLARE_bool(use_gpu);
+DECLARE_int32(gpu_id);
+DECLARE_bool(thread_local_rand_use_global_seed);
 
 enum InputType {
   INPUT_DATA,         // dense vector
@@ -48,8 +47,10 @@ struct TestConfig {
   TestConfig() : testAccumulate(true) {}
 };
 
-void testEvaluator(TestConfig testConf, string testEvaluatorName,
-                   size_t batchSize, bool useGpu) {
+void testEvaluator(TestConfig testConf,
+                   string testEvaluatorName,
+                   size_t batchSize,
+                   bool useGpu) {
 #ifdef PADDLE_ONLY_CPU
   if (useGpu) return;
 #endif
@@ -79,12 +80,23 @@ void testEvaluator(TestConfig testConf, string testEvaluatorName,
         data.ids->rand(dim);  // now rand number can be 0 to inputDefs[i].dim.
         break;
       case INPUT_SPARSE_NON_VALUE_DATA:
-        data.value = makeRandomSparseMatrix(batchSize, dim,
-                                            /* withValue= */ false, useGpu);
+        data.value = makeRandomSparseMatrix(batchSize,
+                                            dim,
+                                            /* withValue= */ false,
+                                            useGpu);
         break;
       default:
         LOG(FATAL) << " unknown inputType ";
         return;
+    }
+
+    ICpuGpuVectorPtr sequenceStartPositions;
+    if (testConf.inputDefs[i].inputType == INPUT_SEQUENCE_DATA ||
+        testConf.inputDefs[i].inputType == INPUT_SEQUENCE_LABEL) {
+      if (!sequenceStartPositions) {
+        generateSequenceStartPositions(batchSize, sequenceStartPositions);
+      }
+      data.sequenceStartPositions = sequenceStartPositions;
     }
 
     arguments.push_back(data);
@@ -92,19 +104,24 @@ void testEvaluator(TestConfig testConf, string testEvaluatorName,
 
   Evaluator* testEvaluator = Evaluator::create(testConf.evaluatorConfig);
   double totalScore = 0.0;
+  testEvaluator->start();
   totalScore += testEvaluator->evalImp(arguments);
   testEvaluator->updateSamplesNum(arguments);
+  testEvaluator->finish();
   LOG(INFO) << *testEvaluator;
 
   double totalScore2 = 0.0;
   if (testConf.testAccumulate) {
+    testEvaluator->start();
     totalScore2 += testEvaluator->evalImp(arguments);
+    testEvaluator->finish();
     EXPECT_LE(fabs(totalScore - totalScore2), 1.0e-5);
   }
 }
 
-void testEvaluatorAll(TestConfig testConf, string testEvaluatorName,
-                   size_t batchSize) {
+void testEvaluatorAll(TestConfig testConf,
+                      string testEvaluatorName,
+                      size_t batchSize) {
   testEvaluator(testConf, testEvaluatorName, batchSize, true);
   testEvaluator(testConf, testEvaluatorName, batchSize, false);
 }
@@ -129,8 +146,8 @@ TEST(Evaluator, classification_error) {
   config.evaluatorConfig.set_classification_threshold(0.4);
   config.inputDefs.push_back({INPUT_DATA, "weight", 1});
   // Not support GPU
-  testEvaluator(config, "classification_error_weight_multi_binary_label", 50,
-                false);
+  testEvaluator(
+      config, "classification_error_weight_multi_binary_label", 50, false);
 }
 
 TEST(Evaluator, sum) {
@@ -198,8 +215,17 @@ TEST(Evaluator, precision_recall) {
   config.evaluatorConfig.set_classification_threshold(0.4);
   config.inputDefs.push_back({INPUT_DATA, "weight", 1});
   // Not support GPU
-  testEvaluator(config, "precision_recall_weight_multi_binary_label", 100,
-                false);
+  testEvaluator(
+      config, "precision_recall_weight_multi_binary_label", 100, false);
+}
+
+TEST(Evaluator, ctc_error_evaluator) {
+  TestConfig config;
+  config.evaluatorConfig.set_type("ctc_edit_distance");
+
+  config.inputDefs.push_back({INPUT_SEQUENCE_DATA, "output", 32});
+  config.inputDefs.push_back({INPUT_SEQUENCE_LABEL, "label", 1});
+  testEvaluatorAll(config, "ctc_error_evaluator", 100);
 }
 
 int main(int argc, char** argv) {

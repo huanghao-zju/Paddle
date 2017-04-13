@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Baidu, Inc. All Rights Reserve.
+/* Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserve.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -11,7 +11,6 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License. */
-
 
 #include "Evaluator.h"
 #include "paddle/gserver/gradientmachines/NeuralNetwork.h"
@@ -33,7 +32,8 @@ private:
     str.clear();
     int prevLabel = -1;
     for (std::vector<int>::const_iterator label = path.begin();
-         label != path.end(); label++) {
+         label != path.end();
+         label++) {
       if (*label != blank_ &&
           (str.empty() || *label != str.back() || prevLabel == blank_)) {
         str.push_back(*label);
@@ -58,8 +58,11 @@ private:
   /* "sp, dp, ip" is the weighting parameter of "substitution, deletion,
    * insertion"
    * in edit-distance error */
-  real stringAlignment(std::vector<int>& gtStr, std::vector<int>& recogStr,
-                       bool backtrace = true, real sp = 1.0, real dp = 1.0,
+  real stringAlignment(std::vector<int>& gtStr,
+                       std::vector<int>& recogStr,
+                       bool backtrace = true,
+                       real sp = 1.0,
+                       real dp = 1.0,
                        real ip = 1.0) {
     std::vector<std::vector<int>> matrix;
     int substitutions, deletions, insertions;
@@ -165,8 +168,8 @@ private:
     return distance / maxLen;
   }
 
-  real editDistance(real* output, int numTimes, int numClasses, int* labels,
-                    int labelsLen) {
+  real editDistance(
+      real* output, int numTimes, int numClasses, int* labels, int labelsLen) {
     numTimes_ = numTimes;
     numClasses_ = numClasses;
     blank_ = numClasses_ - 1;
@@ -194,8 +197,8 @@ public:
   virtual real evalImp(std::vector<Argument>& arguments) {
     CHECK_EQ(arguments.size(), (size_t)2);
     Argument output, label;
-    output.resizeAndCopyFrom(arguments[0], false);
-    label.resizeAndCopyFrom(arguments[1], false);
+    output.resizeAndCopyFrom(arguments[0], false, HPPL_STREAM_DEFAULT);
+    label.resizeAndCopyFrom(arguments[1], false, HPPL_STREAM_DEFAULT);
     hl_stream_synchronize(HPPL_STREAM_DEFAULT);
     CHECK(label.sequenceStartPositions);
     CHECK(label.ids);
@@ -207,7 +210,8 @@ public:
       real err = 0;
       err = editDistance(
           output.value->getData() + output.value->getWidth() * outputStarts[i],
-          output.value->getHeight(), output.value->getWidth(),
+          outputStarts[i + 1] - outputStarts[i],
+          output.value->getWidth(),
           label.ids->getData() + labelStarts[i],
           labelStarts[i + 1] - labelStarts[i]);
 
@@ -224,6 +228,9 @@ public:
     for (const std::string& name : config_.input_layers()) {
       arguments.push_back(nn.getLayer(name)->getOutput());
     }
+  }
+
+  virtual void updateSamplesNum(const std::vector<Argument>& arguments) {
     numSequences_ += arguments[1].getNumSequences();
   }
 
@@ -237,7 +244,7 @@ public:
     seqClassficationError_ = 0;
   }
 
-  virtual void printStats(std::ostream& os) {
+  virtual void printStats(std::ostream& os) const {
     os << config_.name() << "="
        << (numSequences_ ? totalScore_ / numSequences_ : 0);
     os << "  deletions error"

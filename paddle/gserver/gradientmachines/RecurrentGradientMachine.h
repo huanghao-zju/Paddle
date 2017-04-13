@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Baidu, Inc. All Rights Reserve.
+/* Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserve.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,12 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License. */
 
-
 #pragma once
 
+#include <functional>
 #include "GradientMachine.h"
 #include "NeuralNetwork.h"
-#include <functional>
 
 #include "paddle/utils/Locks.h"
 
@@ -45,23 +44,26 @@ public:
     this->removeBeamSearchControlCallbacks();
   }
 
-  virtual void init(const ModelConfig& config, ParamInitCallback callback,
+  virtual void init(const ModelConfig& config,
+                    ParamInitCallback callback,
                     const std::vector<ParameterType>& parameterTypes,
                     bool useGpu);
 
   virtual void prefetch(const std::vector<Argument>& inArgs);
 
   virtual void forward(const std::vector<Argument>& inArgs,
-                       std::vector<Argument>* outArgs, PassType passType);
+                       std::vector<Argument>* outArgs,
+                       PassType passType);
 
   virtual void backward(const UpdateCallback& callback = nullptr);
 
   void forwardBackward(const std::vector<Argument>& inArgs,
-                       std::vector<Argument>* outArgs, PassType passType,
+                       std::vector<Argument>* outArgs,
+                       PassType passType,
                        const UpdateCallback& callback);
 
   virtual void resetState() {}
-  virtual void eval(Evaluator* evaluator);
+  virtual void eval(Evaluator* evaluator) const;
 
   const std::vector<int>& getParameterIds() { return parameterIds_; }
 
@@ -82,8 +84,8 @@ public:
    * beam search, so that user can customize different operations in different
    * beam search iterations.
    */
-  typedef std::function<void(const std::vector<std::vector<int>*>&,
-                             NeuralNetwork*, const int)>
+  typedef std::function<void(
+      const std::vector<std::vector<int>*>&, NeuralNetwork*, const int)>
       BeamSearchCandidatesAdjustCallback;
 
   /**
@@ -100,8 +102,9 @@ public:
    *
    * Return true if this prefix or candidate is expected to be dropped.
    */
-  typedef std::function<bool(int seqId, const std::vector<int>&,
-      const std::vector<real>&)> DropCallback;
+  typedef std::function<bool(
+      int seqId, const std::vector<int>&, const std::vector<real>&)>
+      DropCallback;
 
   /**
     * @brief NormOrDropNodeCallback
@@ -116,8 +119,9 @@ public:
     *
     * The fourth parameter is the probability of the whole path.
     */
-  typedef std::function<void(int seqId, const std::vector<int>&,
-      std::vector<real>&, real*)> NormOrDropNodeCallback;
+  typedef std::function<void(
+      int seqId, const std::vector<int>&, std::vector<real>&, real*)>
+      NormOrDropNodeCallback;
 
   /**
    * @brief Register beam search control callbacks. Used for prediction.
@@ -192,7 +196,7 @@ public:
 
     int machineId;  // index of sample in frame
     int topIndex;   // index of MaxIdLayer output in one sample
-    int seqId;  // index of sequence in batch generation
+    int seqId;      // index of sequence in batch generation
     std::vector<int> machineIdVec;
 
     /**
@@ -206,7 +210,10 @@ public:
     /**
      * @brief Path default ctor, first logProb is 0.
      */
-    Path() { logProb = 0; seqId = 0; }
+    Path() {
+      logProb = 0;
+      seqId = 0;
+    }
     explicit Path(size_t seqId) : seqId(seqId) { logProb = 0; }
 
     /**
@@ -319,29 +326,44 @@ protected:
   };
   std::vector<MemoryFrameLine> memoryFrameLines_;
 
-  // All inFrameLines and outFrameLines have the same element as follows.
+  // Each inFrameLines(inlinks) has its own info(elements) below,
+  // and all outFrameLines(outlinks) share the info with one inFrameLine,
+  // which is assigned by targetInfoInlinkId_.
   struct Info {
     IVectorPtr allIds;         // scattered id of realLayer
     std::vector<int> idIndex;  // index of allIds
     ICpuGpuVectorPtr
-        sequenceStartPositions;      // scattered sequenceStartPositions
+        sequenceStartPositions;         // scattered sequenceStartPositions
     std::vector<int> seqStartPosIndex;  // index of sequenceStartPositions
   };
-  Info info_;
+  std::vector<Info> info_;
 
-  // if no subSeq, tuple of (seqLength, seqStart, seqIndex, seqIndex)
-  // else, tuple of (subSeqLength, subSeqStart, seqIndex, subSeqIndex)
-  std::vector<std::tuple<int, int, int, int>> seqLengthAndStart_;
+  // numSeqs_[i] is the number sequences which is longer than i (for sequence
+  // data) or has more than i subsequences (for subsequence data)
+  std::vector<int> numSeqs_;
 
-  void createInFrameInfo(const Argument& input, PassType passType);
+  std::vector<std::vector<Argument::SeqInfo>> seqInfos_;
+
+  // the id of inlink which share info with outlinks
+  int targetInfoInlinkId_;
+
+  /* create scattered id infomation for all realLayer of inFrameLines one time.
+  *  If hasSubseq, will also create scattered sequenceStartPositions infomation
+  *  for all realLayer of inFrameLines one time.
+  */
+  void createInFrameInfo(int inlinks_id,
+                         const Argument& input,
+                         PassType passType);
 
   void createMemoryFrameInfo(MemoryFrameLine* memoryFrameLine,
                              PassType passType);
 
   void copyScattedId(std::vector<int>& srcIds, IVectorPtr* dstIds, int size);
 
-  void selectRowsOneTime(LayerPtr layer, const IVectorPtr& allIds,
-                         Argument* arg, PassType passType);
+  void selectRowsOneTime(LayerPtr layer,
+                         const IVectorPtr& allIds,
+                         Argument* arg,
+                         PassType passType);
 
   void createSeqPos(const std::vector<int>& sequenceStartPosition,
                     ICpuGpuVectorPtr* sequenceStartPositions);
@@ -363,6 +385,9 @@ protected:
 
   NeuralNetwork* rootNetwork_;
   bool reversed_;
+
+  // if hasSubseq: max number of sentences(subseq)in batchsize samples
+  // else: max number of tokens in batchsize samples(sentences)
   int maxSequenceLength_;
   bool useGpu_;
   bool stopBeamSearch_;
@@ -415,7 +440,7 @@ private:
    * @param machineIdVec : select a row of output matrix in each frame
    * that the generation process expanded.
    */
-  void createDataOutlink(std::vector<int> & machineIdVec);
+  void createDataOutlink(std::vector<int>& machineIdVec);
 
   /*
    * @brief used in beam search, connect previous frame to form recurrent link
@@ -442,7 +467,8 @@ private:
    * @param totalExpandCount : number of already shrinked paths in newPaths
    * @return size of retained paths at the end of a beam search iteration
    */
-  size_t beamShrink(std::vector<Path>& newPaths, size_t seqId,
+  size_t beamShrink(std::vector<Path>& newPaths,
+                    size_t seqId,
                     size_t totalExpandCount);
 
   /*
@@ -452,8 +478,10 @@ private:
    * @param curPathId : index of curPath in member newPaths
    * @param expandWidth : number of paths to be expanded
    */
-  void singlePathExpand(Path& curPath, size_t curPathId,
-                        std::vector<Path>& newPaths, size_t expandWidth);
+  void singlePathExpand(Path& curPath,
+                        size_t curPathId,
+                        std::vector<Path>& newPaths,
+                        size_t expandWidth);
 
   /*
    * @brief A new beam search iteration. Each half-generated paths in previous

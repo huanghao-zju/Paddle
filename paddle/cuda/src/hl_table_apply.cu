@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Baidu, Inc. All Rights Reserve.
+/* Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserve.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ __global__ void KeMatrixAddRows(real* output, int ldo,
       real *tab = table + tableId * ldt;
       for (int i = idx; i < dim; i += blockDimX) {
         if (AddRow) {
-          atomicAdd(&tab[i], out[i]);
+          paddle::paddleAtomicAdd(&tab[i], out[i]);
         } else {
           out[i] += tab[i];
         }

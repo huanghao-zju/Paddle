@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Baidu, Inc. All Rights Reserve.
+/* Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserve.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,15 +14,15 @@ limitations under the License. */
 
 #include "PaddleAPI.h"
 
-#include "paddle/utils/Util.h"
-#include "paddle/utils/PythonUtil.h"
-#include "paddle/utils/Flags.h"
 #include "paddle/parameter/Parameter.h"
+#include "paddle/utils/Common.h"
+#include "paddle/utils/Flags.h"
+#include "paddle/utils/PythonUtil.h"
+#include "paddle/utils/Util.h"
 
-#include <fenv.h>
+#include <algorithm>
 #include <iostream>
 #include <iterator>
-#include <algorithm>
 
 void initPaddle(int argc, char** argv) {
   paddle::initMain(argc, argv);
@@ -36,9 +36,15 @@ FloatArray::FloatArray(const float* b, const size_t l)
 IntArray::IntArray(const int* b, const size_t l, bool f)
     : buf(b), length(l), needFree(f) {}
 
-IntWithFloatArray::IntWithFloatArray(const float* v, const int* i, size_t l,
+IntWithFloatArray::IntWithFloatArray(const float* v,
+                                     const int* i,
+                                     size_t l,
                                      bool f)
     : valBuf(v), idxBuf(i), length(l), needFree(f) {}
+
+bool isUsingGpu() { return FLAGS_use_gpu; }
+
+void setUseGpu(bool useGpu) { FLAGS_use_gpu = useGpu; }
 
 bool isGpuVersion() {
 #ifdef PADDLE_ONLY_CPU

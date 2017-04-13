@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Baidu, Inc. All Rights Reserve.
+/* Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserve.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,17 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License. */
 
-
-#include "paddle/utils/Util.h"
 #include "MultiDataProvider.h"
-#include "paddle/utils/Logging.h"
 #include <algorithm>
+#include "paddle/utils/Logging.h"
+#include "paddle/utils/Util.h"
 
 namespace paddle {
 
 using namespace std;
 
-MultiDataProvider::MultiDataProvider(const DataConfig& config, bool useGpu)
+MultiDataProvider::MultiDataProvider(const DataConfig& config,
+                                     const ModelConfig& modelConfig,
+                                     bool useGpu)
     : DataProvider(config, useGpu) {
   bool atLeastOneMainDataFlag = false;
   totalDataRatio_ = 0;
@@ -57,8 +58,8 @@ MultiDataProvider::MultiDataProvider(const DataConfig& config, bool useGpu)
                    "MultiDataProvider";
       subConfig.set_async_load_data(false);
     }
-    subDataProviders_[i] =
-        std::unique_ptr<DataProvider>(DataProvider::create(subConfig, useGpu_));
+    subDataProviders_[i] = std::unique_ptr<DataProvider>(
+        DataProvider::create(subConfig, modelConfig, useGpu_));
   }
 }
 
@@ -116,6 +117,6 @@ int64_t MultiDataProvider::getNextBatchInternal(int64_t size,
   return batch->getSize();
 }
 
-REGISTER_DATA_PROVIDER(multi, MultiDataProvider);
+REGISTER_DATA_PROVIDER_EX(multi, MultiDataProvider);
 
 }  // namespace paddle

@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Baidu, Inc. All Rights Reserve.
+/* Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserve.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,12 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License. */
 
-
 #pragma once
+// clang-format off
+#include "paddle/utils/Util.h"
 
 #ifndef PADDLE_NO_PYTHON
 // must include the following two blocks, otherwise,
 // gcc compiler may produce warning
+#ifdef __APPLE__
+#define _POSIX_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#define _XOPEN_SOURCE 700
+#endif
+
 #ifdef _POSIX_C_SOURCE
 #define __TEMP_POSIX_C_SOURCE _POSIX_C_SOURCE
 #undef _POSIX_C_SOURCE
@@ -28,18 +35,12 @@ limitations under the License. */
 #endif
 #include <Python.h>
 #include <frameobject.h>
-#ifndef _POSIX_C_SOURCE
-#warning "no _POSIX_C_SOURCE defined in Python.h"
-#endif
-#ifndef _XOPEN_SOURCE
-#warning "no _XOPEN_SOURCE defined in Python.h"
-#endif
 #endif
 
-#include "paddle/utils/Util.h"
 #include <stdarg.h>
-#include <mutex>
 #include <map>
+#include <mutex>
+// clang-format on
 
 namespace paddle {
 
@@ -82,10 +83,11 @@ PyObjectPtr createPythonClass(const std::string& moduleName,
                               const std::vector<std::string>& args,
                               const std::map<std::string, std::string>& kwargs);
 
-#define CHECK_PY(x)\
-  CHECK((x) != nullptr) << ::paddle::py::getPyCallStack()
+#define CHECK_PY(x) CHECK((x) != nullptr) << ::paddle::py::getPyCallStack()
 
 namespace py {
+PyObjectPtr import(const std::string& moduleName);
+
 /**
  * Cast a PyLong or PyInt to int type T.
  * @tparam T return type.
@@ -98,13 +100,13 @@ template <typename T>
 T castInt(PyObject* obj, bool* ok = nullptr) {
   if (PyLong_Check(obj)) {
     if (ok) *ok = true;
-    return (T) PyLong_AsUnsignedLong(obj);
+    return (T)PyLong_AsUnsignedLong(obj);
   } else if (PyInt_Check(obj)) {
     if (ok) *ok = true;
-    return (T) PyInt_AsLong(obj);
+    return (T)PyInt_AsLong(obj);
   } else {
     if (ok) *ok = false;
-    return (T) 0;
+    return (T)0;
   }
 }
 
@@ -113,14 +115,12 @@ T castInt(PyObject* obj, bool* ok = nullptr) {
  *
  * Just like toString method in java.
  */
-char *repr(PyObject* obj);
+char* repr(PyObject* obj);
 
 /**
  * Invoke repr of python object.
  */
-inline char *repr(const PyObjectPtr &obj) {
-  return repr(obj.get());
-}
+inline char* repr(const PyObjectPtr& obj) { return repr(obj.get()); }
 
 /**
  * Get Python Error Stack String.
@@ -134,8 +134,7 @@ std::string getPyCallStack();
  */
 class ObjectHelper {
 public:
-  explicit ObjectHelper(const PyObjectPtr& obj): obj_(obj) {
-  }
+  explicit ObjectHelper(const PyObjectPtr& obj) : obj_(obj) {}
 
   /**
    * get attribute
@@ -175,10 +174,21 @@ public:
   /**
    * Get bool attribute.
    * @param field
+   * @param [out] isBoolType return true if attribute is bool type. If the
+   *                         attribute is not bool type, then an implicit
+   *                         conversion will happens, and will return the
+   *                         conversion result.
+   *
+   *                         Such as, if the attribute is 1, then the return
+   *                         value of function will be true, but the isBoolType
+   *                         will return false.
    * @return
    */
-  bool getBoolAttr(const std::string& field) const {
+  bool getBoolAttr(const std::string& field, bool* isBoolType = nullptr) const {
     PyObjectPtr tmp(getAttr(field));
+    if (isBoolType) {
+      *isBoolType = PyBool_Check(tmp.get());
+    }
     return PyObject_IsTrue(tmp.get());
   }
 
@@ -197,15 +207,13 @@ public:
     CHECK(PySequence_Check(seq_));
   }
 
-  explicit SequenceHelper(PyObject* seq): seq_(seq) {
+  explicit SequenceHelper(PyObject* seq) : seq_(seq) {
     CHECK(PySequence_Check(seq_));
   }
 
-  inline size_t size() const {
-    return (size_t) PySequence_Size(seq_);
-  }
+  inline size_t size() const { return (size_t)PySequence_Size(seq_); }
 
-  inline PyObject* operator[] (size_t i) const {
+  inline PyObject* operator[](size_t i) const {
     return PySequence_Fast_GET_ITEM(seq_, i);
   }
 
@@ -246,9 +254,9 @@ private:
 
 class DictHelper {
 public:
-  explicit DictHelper(PyObject* d): dict_(d) {}
+  explicit DictHelper(PyObject* d) : dict_(d) {}
 
-  explicit DictHelper(const PyObjectPtr& d): dict_(d.get()) {}
+  explicit DictHelper(const PyObjectPtr& d) : dict_(d.get()) {}
 
   void set(const std::string& key, PyObject* item) {
     PyDict_SetItemString(dict_, key.c_str(), item);
@@ -258,10 +266,17 @@ public:
     this->set(key, PyBool_FromLong(b));
   }
 
-private:
-  inline void checkDict() {
-    CHECK(PyDict_Check(this->dict_));
+  void setStringList(const std::string& key,
+                     const std::vector<std::string>& items) {
+    auto* list = PyList_New(items.size());
+    for (size_t i = 0; i < items.size(); ++i) {
+      PyList_SetItem(list, i, PyString_FromString(items[i].c_str()));
+    }
+    this->set(key, list);
   }
+
+private:
+  inline void checkDict() { CHECK(PyDict_Check(this->dict_)); }
 
   PyObject* dict_;
 };
@@ -275,7 +290,7 @@ inline static bool isCallable(const PyObjectPtr& obj) {
  */
 class CallableHelper {
 public:
-  explicit CallableHelper(const PyObjectPtr& obj): obj_(obj) {
+  explicit CallableHelper(const PyObjectPtr& obj) : obj_(obj) {
     CHECK(py::isCallable(obj_));
   }
 
@@ -285,21 +300,17 @@ public:
    * reset args, and create new tuple.
    * @param sz args size.
    */
-  void setArgsSize(size_t sz) {
-    args.reset(PyTuple_New(sz));
-  }
+  void setArgsSize(size_t sz) { args.reset(PyTuple_New(sz)); }
 
   /**
    * Get args sequence. User can set/get by SequenceHelper.
    */
-  SequenceHelper getArgs() {
-    return SequenceHelper(args);
-  }
+  SequenceHelper getArgs() { return SequenceHelper(args); }
 
   /**
    * Call python method, return an object.
    */
-  PyObject* operator() () {
+  PyObject* operator()() {
     PyGuard guard;
     return PyObject_Call(obj_.get(), args.get(), kwargs.get());
   }

@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Baidu, Inc. All Rights Reserve.
+/* Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserve.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -11,7 +11,6 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License. */
-
 
 #include "AgentLayer.h"
 
@@ -45,8 +44,8 @@ void AgentLayer::forward(PassType passType) {
     if (realOutput.ids) {
       output_.ids->subVecFrom(*realOutput.ids, 0, numSamples_);
     } else {
-      output_.subArgFrom(realOutput, /* offset */ 0, numSamples_, getSize(),
-                         useGpu_);
+      output_.subArgFrom(
+          realOutput, /* offset */ 0, numSamples_, getSize(), useGpu_);
     }
   } else {
     output_ = realOutput;
@@ -62,12 +61,18 @@ void SequenceAgentLayer::forward(PassType passType) {
 
   // get Arguments from real layers
   if (numSamples_ > 0 && numSamples_ < realNumSequences) {
-    int numRows = realOutput.sequenceStartPositions->
-                  getData(false)[numSamples_];
+    int numRows =
+        realOutput.sequenceStartPositions->getData(false)[numSamples_];
     CHECK(!realOutput.ids) << "Not supported";
-    output_.subArgFrom(realOutput, /* offset */ 0, numRows, getSize(), useGpu_,
-                       /* trans */ false, /* seqFlag */ true,
-                       /* seqStart */ 0, /* seqSize */ numSamples_ + 1);
+    output_.subArgFrom(realOutput,
+                       /* offset */ 0,
+                       numRows,
+                       getSize(),
+                       useGpu_,
+                       /* trans */ false,
+                       /* seqFlag */ true,
+                       /* seqStart */ 0,
+                       /* seqSize */ numSamples_ + 1);
   } else {
     output_ = realOutput;
   }
@@ -108,7 +113,8 @@ void GatherAgentLayer::forward(PassType passType) {
   for (size_t i = 0; i < realLayers_.size(); ++i) {
     const MatrixPtr& realV = realLayers_[i]->getOutputValue();
     idsVec_[i] = IVector::create(allIds_->getData() + idIndex_[i],
-                                 /* size */ realV->getHeight(), useGpu_);
+                                 /* size */ realV->getHeight(),
+                                 useGpu_);
     realV->addToRows(*outV, *idsVec_[i]);
   }
 }
@@ -139,15 +145,16 @@ void ScatterAgentLayer::forward(PassType passType) {
   Layer::forward(passType);
   CHECK_EQ(realLayer_->getDeviceId(), this->getDeviceId());
 
-  if (realLayer_->getOutput().ids) {  // ids scatter
-    IVector::resizeOrCreate(output_.ids, ids_->getSize(), useGpu_);
-    output_.ids->selectFrom(*realLayer_->getOutput().ids, *ids_);
-  } else {  // value scatter
-    int width = this->getSize();
-    if (realOutArg_.value) {
-      output_.subArgFrom(realOutArg_, /* offset */ idIndex_ * width, idSize_,
-                         width, useGpu_);
-    } else {  // used in generation
+  int width = this->getSize();
+  if (realOutArg_.value || realOutArg_.ids) {
+    output_.subArgFrom(
+        realOutArg_, /* offset */ idIndex_, idSize_, width, useGpu_);
+  } else {  // used in generation
+    if (realLayer_->getOutput().ids) {
+      IVector::resizeOrCreate(output_.ids, ids_->getSize(), useGpu_);
+      output_.ids->selectFrom(*realLayer_->getOutput().ids, *ids_);
+    }
+    if (realLayer_->getOutput().value) {
       int height = ids_->getSize();
       resetOutput(height, width);
 
@@ -213,19 +220,23 @@ void SequenceGatherAgentLayer::forward(PassType passType) {
 void SequenceScatterAgentLayer::forward(PassType passType) {
   Layer::forward(passType);
   CHECK_EQ(realLayer_->getDeviceId(), this->getDeviceId());
-  CHECK(!realLayer_->getOutput().ids) << "Not supported";
 
   const Argument& input = realLayer_->getOutput();
-  CHECK_EQ(input.value->getWidth(), this->getSize());
+  CHECK_EQ(realLayer_->getSize(), this->getSize());
   int width = this->getSize();
 
   AsyncGpuBlock asyncGpuBlock;
   REGISTER_TIMER_INFO("SequenceAgentLayerForward", getName().c_str());
 
-  if (realOutArg_.value) {
+  if (realOutArg_.value || realOutArg_.ids) {
     CHECK(realOutArg_.sequenceStartPositions);
-    output_.subArgFrom(realOutArg_, /* offset */ idIndex_ * width, idSize_,
-                       width, useGpu_, /* trans */ false, /* seqFlag */ true,
+    output_.subArgFrom(realOutArg_,
+                       /* offset */ idIndex_,
+                       idSize_,
+                       width,
+                       useGpu_,
+                       /* trans */ false,
+                       /* seqFlag */ true,
                        /* seqStart */ seqStartPosIndex_,
                        /* seqSize */ numSequences_);
   } else {
@@ -248,12 +259,13 @@ void SequenceScatterAgentLayer::forward(PassType passType) {
 
     CHECK_NE(input.sequenceStartPositions.get(),
              output_.sequenceStartPositions.get());
-    ICpuGpuVector::resizeOrCreate(output_.sequenceStartPositions,
-                                   numSequences + 1, false);
+    ICpuGpuVector::resizeOrCreate(
+        output_.sequenceStartPositions, numSequences + 1, false);
     int* outStarts = output_.sequenceStartPositions->getMutableData(false);
 
-    IVector::resizeOrCreate(cpuInputStartPos_, height, false);
-    int* inStarts = cpuInputStartPos_->getData();
+    ICpuGpuVector::resizeOrCreate(inputStartPos_, height, false);
+    int* inStarts = inputStartPos_->getMutableData(false);
+
     size_t offsetOut = 0;
     for (size_t i = 0; i < numSequences; ++i) {
       outStarts[i] = offsetOut;
@@ -266,13 +278,8 @@ void SequenceScatterAgentLayer::forward(PassType passType) {
     }
     outStarts[numSequences] = offsetOut;
 
-    if (useGpu_) {
-      IVector::resizeOrCreate(inputStartPos_, height, true);
-      inputStartPos_->copyFrom(*cpuInputStartPos_, HPPL_STREAM_DEFAULT);
-    } else {
-      inputStartPos_ = cpuInputStartPos_;
-    }
-    outputValue->copyByRowIndex(*input.value, *inputStartPos_);
+    outputValue->copyByRowIndex(*input.value,
+                                *inputStartPos_->getVector(useGpu_));
   }
 }
 

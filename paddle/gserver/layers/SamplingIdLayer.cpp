@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Baidu, Inc. All Rights Reserve.
+/* Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserve.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,8 +35,8 @@ public:
   explicit SamplingIdLayer(const LayerConfig& config)
       : Layer(config), rand1_(0, 1) {}
 
-  virtual bool init(const LayerMap& layerMap,
-                    const ParameterMap& parameterMap) {
+  bool init(const LayerMap& layerMap,
+            const ParameterMap& parameterMap) override {
     bool ret = Layer::init(layerMap, parameterMap);
     CHECK_EQ(1UL, inputLayers_.size());
     if (useGpu_) {
@@ -48,12 +48,14 @@ public:
     return ret;
   }
 
-  void forward(PassType passType) {
+  void forward(PassType passType) override {
     Layer::forward(passType);
     if (useGpu_) {
       for (size_t i = 0; i < inputLayers_.size(); i++) {
-        tmpCpuInput_[i].resizeAndCopyFrom(getInput(i), false, HPPL_STREAM_1);
+        tmpCpuInput_[i].resizeAndCopyFrom(
+            getInput(i), false, HPPL_STREAM_DEFAULT);
       }
+      hl_stream_synchronize(HPPL_STREAM_DEFAULT);
       forwardImp(tmpCpuInput_[0]);
     } else {
       forwardImp(getInput(0));
@@ -81,7 +83,7 @@ public:
     output_.ids->copyFrom(ids.data(), batchSize);
   }
 
-  virtual void backward(const UpdateCallback& callback) {}
+  void backward(const UpdateCallback& callback) override {}
 };
 
 REGISTER_LAYER(sampling_id, SamplingIdLayer);

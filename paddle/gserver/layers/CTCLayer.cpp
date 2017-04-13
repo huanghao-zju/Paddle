@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Baidu, Inc. All Rights Reserve.
+/* Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserve.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -11,7 +11,6 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License. */
-
 
 #include "CTCLayer.h"
 
@@ -49,8 +48,10 @@ void CTCLayer::forward(PassType passType) {
   Layer::forward(passType);
   if (useGpu_) {
     for (size_t i = 0; i < inputLayers_.size(); i++) {
-      tmpCpuInput_[i].resizeAndCopyFrom(getInput(i), false, HPPL_STREAM_1);
+      tmpCpuInput_[i].resizeAndCopyFrom(
+          getInput(i), false, HPPL_STREAM_DEFAULT);
     }
+    hl_stream_synchronize(HPPL_STREAM_DEFAULT);
     forwardImp(tmpCpuInput_[0], tmpCpuInput_[1]);
   } else {
     forwardImp(getInput(0), getInput(1));
@@ -69,8 +70,7 @@ void CTCLayer::forwardImp(const Argument& softmaxSeqs,
   resizeOutput(numSequences, 1);
   std::vector<real> out(numSequences);
 
-  const int* labelSeqsStarts =
-      labelSeqs.sequenceStartPositions->getData(false);
+  const int* labelSeqsStarts = labelSeqs.sequenceStartPositions->getData(false);
   const int* softmaxSeqsStarts =
       softmaxSeqs.sequenceStartPositions->getData(false);
 
@@ -79,22 +79,22 @@ void CTCLayer::forwardImp(const Argument& softmaxSeqs,
       ctcs_.emplace_back(numClasses_, normByTimes_);
     }
     out[i] = ctcs_[i].forward(
-            softmaxSeqs.value->getData() + numClasses_ * softmaxSeqsStarts[i],
-            softmaxSeqsStarts[i + 1] - softmaxSeqsStarts[i],
-            labelSeqs.ids->getData() + labelSeqsStarts[i],
-            labelSeqsStarts[i + 1] - labelSeqsStarts[i]);
+        softmaxSeqs.value->getData() + numClasses_ * softmaxSeqsStarts[i],
+        softmaxSeqsStarts[i + 1] - softmaxSeqsStarts[i],
+        labelSeqs.ids->getData() + labelSeqsStarts[i],
+        labelSeqsStarts[i + 1] - labelSeqsStarts[i]);
   }
   output_.value->copyFrom(out.data(), numSequences);
 }
 
-void CTCLayer::backward(const UpdateCallback &callback) {
+void CTCLayer::backward(const UpdateCallback& callback) {
   (void)callback;
   if (useGpu_) {
     backwardImp(callback, tmpCpuInput_[0], tmpCpuInput_[1]);
-    const_cast<Argument&>(getInput(0)).
-            resizeAndCopyFrom(tmpCpuInput_[0], true, HPPL_STREAM_1);
-    const_cast<Argument&>(getInput(1)).
-            resizeAndCopyFrom(tmpCpuInput_[1], true, HPPL_STREAM_1);
+    const_cast<Argument&>(getInput(0))
+        .resizeAndCopyFrom(tmpCpuInput_[0], true, HPPL_STREAM_DEFAULT);
+    const_cast<Argument&>(getInput(1))
+        .resizeAndCopyFrom(tmpCpuInput_[1], true, HPPL_STREAM_DEFAULT);
   } else {
     backwardImp(callback, getInput(0), getInput(1));
   }
@@ -105,8 +105,7 @@ void CTCLayer::backwardImp(const UpdateCallback& callback,
                            const Argument& labelSeqs) {
   size_t numSequences = labelSeqs.sequenceStartPositions->getSize() - 1;
 
-  const int* labelSeqsStarts =
-      labelSeqs.sequenceStartPositions->getData(false);
+  const int* labelSeqsStarts = labelSeqs.sequenceStartPositions->getData(false);
   const int* softmaxSeqsStarts =
       softmaxSeqs.sequenceStartPositions->getData(false);
 

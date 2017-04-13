@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Baidu, Inc. All Rights Reserve.
+/* Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserve.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,14 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License. */
 
-
 #include "MultinomialSampler.h"
 
 namespace paddle {
 
 MultinomialSampler::MultinomialSampler(const real* prob, int size)
     : rand_(0.0, size) {
-  intervals_.reserve(size + 1);
+  intervals_.resize(size + 1);
   double sum = 0;
   for (int i = 0; i < size; ++i) {
     sum += prob[i];
@@ -50,12 +49,13 @@ MultinomialSampler::MultinomialSampler(const real* prob, int size)
   int bigPos = nextBigPos(0);
 
   auto fillIntervals = [&]() {
-    while (bigPos < size && smallPos < size) {
+    while (bigPos < size) {
       while (intervals_[bigPos].thresh > 1 && smallPos < size) {
         intervals_[smallPos].otherId = bigPos;
         intervals_[bigPos].thresh -= 1 - intervals_[smallPos].thresh;
         smallPos = nextSmallPos(smallPos + 1);
       }
+      if (smallPos >= size) break;
       bigPos = nextBigPos(bigPos + 1);
       // If intervals_[bigPos].thresh < 1, it becomes a small interval
     }

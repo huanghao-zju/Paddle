@@ -1,4 +1,4 @@
-# Copyright (c) 2016 Baidu, Inc. All Rights Reserved
+# Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserved
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,9 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from py_paddle import swig_paddle, DataProviderWrapperConverter
+from py_paddle import swig_paddle
 import paddle.trainer.config_parser
-from paddle.trainer.PyDataProviderWrapper import DenseSlot, IndexSlot
 import numpy
 import util
 
@@ -99,7 +98,8 @@ def main():
         cost_vec = outArgs.getSlotValue(0)
         assert isinstance(cost_vec, swig_paddle.Matrix)
         cost_vec = cost_vec.copyToNumpyMat()
-        print 'Finish Batch', batch_id, 'with cost ', cost_vec.sum() / batch_size
+        print 'Finish Batch', batch_id, 'with cost ', cost_vec.sum(
+        ) / batch_size
         batch_id += 1
 
     for optimizer in optimizers:

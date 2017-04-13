@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Baidu, Inc. All Rights Reserve.
+/* Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserve.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -192,10 +192,10 @@ __global__ void KeLstmBackward(Op op,
 
   if (isBatch) {
     if (value.prevStateValue) {
-      if (grad.checkIgGrad) atomicAdd(grad.checkIgGrad+frameIdx, rCheckIGrad);
-      if (grad.checkFgGrad) atomicAdd(grad.checkFgGrad+frameIdx, rCheckFGrad);
+      if (grad.checkIgGrad) paddle::paddleAtomicAdd(grad.checkIgGrad+frameIdx, rCheckIGrad);
+      if (grad.checkFgGrad) paddle::paddleAtomicAdd(grad.checkFgGrad+frameIdx, rCheckFGrad);
     }
-    if (grad.checkOgGrad) atomicAdd(grad.checkOgGrad+frameIdx, rCheckOGrad);
+    if (grad.checkOgGrad) paddle::paddleAtomicAdd(grad.checkOgGrad+frameIdx, rCheckOGrad);
   } else {
     if (value.prevStateValue) {
       if (grad.checkIgGrad) grad.checkIgGrad[frameIdx] += rCheckIGrad;

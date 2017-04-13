@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Baidu, Inc. All Rights Reserve.
+/* Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserve.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,40 +12,54 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License. */
 
-
 #pragma once
 
-#include <vector>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <fstream>
+#include <iostream>
 #include <memory>
 #include <mutex>
-#include <iostream>
-#include <fstream>
-#include <stdint.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
+#include <vector>
 
-#include "paddle/utils/Logging.h"
-#include "paddle/utils/Queue.h"
-#include "paddle/utils/Locks.h"
-#include "paddle/utils/ThreadLocal.h"
-#include "paddle/utils/TypeDefs.h"
+#include "DataConfig.pb.h"
 #include "paddle/math/Matrix.h"
 #include "paddle/math/SparseMatrix.h"
-#include "paddle/utils/Util.h"
 #include "paddle/math/Vector.h"
-#include "DataConfig.pb.h"
-#include "paddle/utils/ClassRegistrar.h"
 #include "paddle/parameter/Argument.h"
+#include "paddle/utils/ClassRegistrar.h"
+#include "paddle/utils/Common.h"
+#include "paddle/utils/Locks.h"
+#include "paddle/utils/Logging.h"
+#include "paddle/utils/Queue.h"
+#include "paddle/utils/ThreadLocal.h"
+#include "paddle/utils/Util.h"
 
 namespace paddle {
-
 /**
  * @def REGISTER_DATA_PROVIDER
- * @brief Macro for registering a data provider
+ * @brief Macro for registering a data provider. The class type should contain
+ *        a consturctor with parameter (DataConfig, bool).
  */
-#define REGISTER_DATA_PROVIDER(__type_name, __class_name)               \
-  static InitFunction __reg_type_##__type_name([]() {                   \
+#define REGISTER_DATA_PROVIDER(__type_name, __class_name)                \
+  static InitFunction __reg_type_##__type_name([]() {                    \
+    DataProvider::registrar_.registerClass(                              \
+        #__type_name,                                                    \
+        [](DataConfig conf, ModelConfig, bool useGpu) -> DataProvider* { \
+          DataProvider* dp = new __class_name(conf, useGpu);             \
+          return dp;                                                     \
+        });                                                              \
+  })
+
+/**
+ * @def REGISTER_DATA_PROVIDER_EX
+ * @brief Macro for registering a data provider, which contains a constructor
+ *        with parameter (DataConfig, ModelConfig, bool).
+ */
+#define REGISTER_DATA_PROVIDER_EX(__type_name, __class_name)            \
+  static InitFunction __reg_type_##__type_name([] {                     \
     DataProvider::registrar_.registerClass<__class_name>(#__type_name); \
   })
 
@@ -166,7 +180,8 @@ public:
    * @param[in]  size    DataBatch.getSize()
    * @param[in]  dataId  sub dataprovider id (in MultiDataProvider)
    */
-  void appendArguments(const std::vector<Argument>& argus, int size,
+  void appendArguments(const std::vector<Argument>& argus,
+                       int size,
                        int dataId) {
     size_ += size;
     for (const auto& argu : argus) {
@@ -256,7 +271,9 @@ public:
   void finishAsyncLoad() {
     stopping_ = true;
     taskReadySem_.post();
-    asyncLoader_->join();
+    if (asyncLoader_) {
+      asyncLoader_->join();
+    }
   }
 
   void setPending(bool pending) { pending_ = pending; }
@@ -285,9 +302,18 @@ protected:
  */
 class DataProvider {
 public:
-  static ClassRegistrar<DataProvider, DataConfig, bool> registrar_;
+  static ClassRegistrar<DataProvider, DataConfig, ModelConfig, bool> registrar_;
   static DataProvider* create(const DataConfig& config,
+                              const ModelConfig& modelConfig,
                               bool useGpu = FLAGS_use_gpu);
+
+  /**
+   * @brief create only used for unittest.
+   */
+  inline static DataProvider* create(const DataConfig& config,
+                                     bool useGpu = FLAGS_use_gpu) {
+    return create(config, ModelConfig(), useGpu);
+  }
 
   DataProvider(const DataConfig& config, bool useGpu)
       : config_(config),
@@ -325,7 +351,6 @@ public:
    */
   virtual void reset() {
     if (doubleBuffer_ != nullptr) {
-      LOG(INFO) << "the double-buffer is starting ...";
       doubleBuffer_->startAsyncLoad();
     }
   }
@@ -336,13 +361,13 @@ public:
    * @note return -1 to indicate unlimited number of samples.
    */
   virtual int64_t getSize() = 0;
+
   /**
    * @brief Get next batch training samples internally
    * @param[in]    size      size of training samples to get
    * @param[out]   batch     a batch of training samples
    * @return actual size of obtained training samples
    */
-
   virtual int64_t getNextBatchInternal(int64_t size, DataBatch* batch) = 0;
 
 protected:
@@ -437,7 +462,9 @@ protected:
    *
    * label[n] is the label for the n-th sample.
    */
-  virtual int64_t fillBufferImp(real* data, int* label, int* info,
+  virtual int64_t fillBufferImp(real* data,
+                                int* label,
+                                int* info,
                                 int64_t size) = 0;
 };
 
@@ -450,7 +477,9 @@ public:
 protected:
   void loadData(const std::string& fileName);
   void loadDataFile(const std::string& fileName);
-  virtual int64_t fillBufferImp(real* data, int* label, int* info,
+  virtual int64_t fillBufferImp(real* data,
+                                int* label,
+                                int* info,
                                 int64_t size);
 
 protected:
